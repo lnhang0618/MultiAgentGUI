@@ -89,8 +89,9 @@ class ExampleBackendAdapter(BackendAdapter):
             }
         ]
         
-        # 无人机数据
-        self._agents = [
+        # 智能体数据：分为己方和敌方两个独立的列表，结构更清晰
+        # 己方（红军）智能体：包含完整的子群信息和状态
+        self._friendly_agents = [
             {'id': 1, 'type': '侦察型无人机', 'coalition_id': 0, 'status': 'working', 'x': 20, 'y': 30},
             {'id': 2, 'type': '攻击型无人机', 'coalition_id': 0, 'status': 'working', 'x': 25, 'y': 35},
             {'id': 3, 'type': '运输型无人机', 'coalition_id': 0, 'status': 'working', 'x': 22, 'y': 32},
@@ -100,6 +101,14 @@ class ExampleBackendAdapter(BackendAdapter):
             {'id': 7, 'type': '攻击型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 45, 'y': 55},
             {'id': 8, 'type': '运输型无人机', 'coalition_id': 2, 'status': 'charging', 'x': 50, 'y': 50},
             {'id': 9, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 42, 'y': 52},
+        ]
+        
+        # 敌方（蓝军）智能体：不包含子群信息，状态可能未知或不完整
+        self._enemy_agents = [
+            {'id': 10, 'type': '侦察型无人机', 'status': 'unknown', 'x': 10, 'y': 10},
+            {'id': 11, 'type': '攻击型无人机', 'status': 'unknown', 'x': 15, 'y': 15},
+            {'id': 12, 'type': '侦察型无人机', 'status': 'unknown', 'x': 80, 'y': 20},
+            {'id': 13, 'type': '攻击型无人机', 'status': 'unknown', 'x': 85, 'y': 25},
         ]
         
         # 任务数据
@@ -135,9 +144,22 @@ class ExampleBackendAdapter(BackendAdapter):
         if self._simulation_running:
             self._update_agent_positions()
         
+        # 合并己方和敌方智能体数据（为了保持接口兼容性）
+        # 添加faction字段以便服务层区分
+        all_agents = []
+        for agent in self._friendly_agents:
+            agent_copy = agent.copy()
+            agent_copy['faction'] = '红军'
+            all_agents.append(agent_copy)
+        for agent in self._enemy_agents:
+            agent_copy = agent.copy()
+            agent_copy['faction'] = '蓝军'
+            agent_copy['coalition_id'] = None  # 敌方没有子群信息
+            all_agents.append(agent_copy)
+        
         return {
             'coalitions': self._coalitions.copy(),
-            'agents': self._agents.copy(),
+            'agents': all_agents,
             'current_time': self._current_time
         }
     
@@ -164,18 +186,34 @@ class ExampleBackendAdapter(BackendAdapter):
         
         # 构建场景数据
         agents = []
-        colors = ["#FF5555", "#55FF55", "#5555FF", "#FFFF55", "#FF55FF", "#55FFFF", "#FF8855", "#5588FF", "#88FF55"]
+        
+        # 己方（红军）颜色：红色系
+        friendly_colors = ["#FF0000", "#FF4444", "#FF6666", "#FF8888", "#FFAAAA", "#FFCCCC"]
+        # 敌方（蓝军）颜色：蓝色系
+        enemy_colors = ["#0000FF", "#4444FF", "#6666FF", "#8888FF", "#AAAAFF", "#CCCCFF"]
         # pyqtgraph支持的符号：'o'(circle), 's'(square), 't'(triangle), 'd'(diamond), '+'(plus)
         # 注意：避免使用matplotlib风格的符号如'^', 'v', 'D', 'p', '*', 'x'等
-        symbols = ['o', 's', 't', 'd', 't', 's', 'o', '+', 'd']
+        friendly_symbols = ['o', 's', 't', 'd', 's', 'o']
+        enemy_symbols = ['+', 'd', 't', 's', 'o', '+']
         
-        for i, agent in enumerate(self._agents):
+        # 处理己方智能体
+        for i, agent in enumerate(self._friendly_agents):
             agents.append({
                 'id': agent['id'],
                 'x': agent['x'],
                 'y': agent['y'],
-                'color': colors[i % len(colors)],
-                'symbol': symbols[i % len(symbols)]
+                'color': friendly_colors[i % len(friendly_colors)],
+                'symbol': friendly_symbols[i % len(friendly_symbols)]
+            })
+        
+        # 处理敌方智能体
+        for i, agent in enumerate(self._enemy_agents):
+            agents.append({
+                'id': agent['id'],
+                'x': agent['x'],
+                'y': agent['y'],
+                'color': enemy_colors[i % len(enemy_colors)],
+                'symbol': enemy_symbols[i % len(enemy_symbols)]
             })
         
         targets = []
@@ -188,11 +226,12 @@ class ExampleBackendAdapter(BackendAdapter):
             })
         
         # 生成轨迹数据（从Agent当前位置到目标）
+        # 通常只为己方智能体生成轨迹
         trajectories = []
-        for i, agent in enumerate(self._agents[:3]):  # 只为前3个Agent生成轨迹
-            if agent['status'] == 'working':
+        for i, agent in enumerate(self._friendly_agents):
+            if agent['status'] == 'working' and i < 3:  # 只为前3个工作中的己方智能体生成轨迹
                 # 找到对应的目标
-                target_idx = i % len(self._targets)
+                target_idx = agent['id'] % len(self._targets)
                 target = self._targets[target_idx]
                 
                 # 生成轨迹点
@@ -203,7 +242,7 @@ class ExampleBackendAdapter(BackendAdapter):
                 )
                 trajectories.append({
                     'points': points,
-                    'color': colors[i % len(colors)]
+                    'color': friendly_colors[i % len(friendly_colors)]
                 })
         
         return {
@@ -264,7 +303,8 @@ class ExampleBackendAdapter(BackendAdapter):
     
     def _update_agent_positions(self):
         """更新Agent位置（模拟移动）"""
-        for agent in self._agents:
+        # 更新己方智能体位置
+        for agent in self._friendly_agents:
             if agent['status'] == 'working':
                 # 向目标移动
                 target_idx = agent['id'] % len(self._targets)
@@ -285,6 +325,19 @@ class ExampleBackendAdapter(BackendAdapter):
                 # 随机移动
                 agent['x'] += random.uniform(-2, 2)
                 agent['y'] += random.uniform(-2, 2)
+                agent['x'] = max(0, min(100, agent['x']))
+                agent['y'] = max(0, min(100, agent['y']))
+        
+        # 更新敌方智能体位置
+        for agent in self._enemy_agents:
+            # 敌方智能体：模拟观测到的移动（更随机，速度可能不同）
+            # 由于无法获取敌方完整信息，移动模式更不确定
+            if random.random() < 0.3:  # 30%概率移动
+                # 随机方向移动
+                angle = random.uniform(0, 2 * math.pi)
+                speed = random.uniform(0.2, 0.8)  # 速度不确定
+                agent['x'] += math.cos(angle) * speed
+                agent['y'] += math.sin(angle) * speed
                 agent['x'] = max(0, min(100, agent['x']))
                 agent['y'] = max(0, min(100, agent['y']))
     

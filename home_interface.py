@@ -87,13 +87,15 @@ class HomeInterface(Ui_HomeInterface, QWidget):
         """刷新所有面板的数据"""
         # 刷新Agent数据
         coalition_data = self._agent_service.get_coalition_data_for_gui()
-        agent_data = self._agent_service.get_agent_data_for_gui()
+        friendly_agent_data = self._agent_service.get_friendly_agent_data_for_gui()
+        enemy_agent_data = self._agent_service.get_enemy_agent_data_for_gui()
         unit_gantt_data = self._agent_service.get_unit_gantt_data_for_gui()
         replan_options = self._agent_service.get_replan_gantt_options()
         replan_data_map = self._agent_service.get_replan_gantt_data_for_gui()
         
         self.agent_panel.set_coalition_data(coalition_data)
-        self.agent_panel.set_agent_data(agent_data)
+        self.agent_panel.set_friendly_agent_data(friendly_agent_data)
+        self.agent_panel.set_enemy_agent_data(enemy_agent_data)
         self.agent_panel.set_unit_gantt_data(unit_gantt_data)
         self.agent_panel.set_replan_gantt_options(replan_options)
         for option_key, data in replan_data_map.items():

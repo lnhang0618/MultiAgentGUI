@@ -36,25 +36,70 @@ class AgentService:
         
         return table_data
     
-    def get_agent_data_for_gui(self) -> List[List[str]]:
+    def get_friendly_agent_data_for_gui(self) -> List[List[str]]:
         """
-        获取无人机数据，转换为GUI需要的格式
-        返回：List[List[str]] - 表格数据 [['无人机序号', '类型', '子群序号', '当前状态'], ...]
+        获取己方（红军）智能体数据，转换为GUI需要的格式
+        返回：List[List[str]] - 表格数据 [['智能体编号', '类型', '子群序号', '当前状态'], ...]
         """
         raw_data = self._backend.fetch_agent_data()
         agents = raw_data.get('agents', [])
         
         table_data = []
         for agent in agents:
-            row = [
-                str(agent.get('id', 'N/A')),
-                agent.get('type', '未知'),
-                str(agent.get('coalition_id', 'N/A')),
-                self._format_status(agent.get('status', 'unknown'))
-            ]
-            table_data.append(row)
+            # 只处理己方（红军）智能体
+            faction = agent.get('faction', '')
+            if faction == '红军':
+                row = [
+                    str(agent.get('id', 'N/A')),
+                    agent.get('type', '未知'),
+                    str(agent.get('coalition_id', 'N/A')) if agent.get('coalition_id') is not None else 'N/A',
+                    self._format_status(agent.get('status', 'unknown'))
+                ]
+                table_data.append(row)
         
         return table_data
+    
+    def get_enemy_agent_data_for_gui(self) -> List[List[str]]:
+        """
+        获取敌方（蓝军）智能体数据，转换为GUI需要的格式
+        返回：List[List[str]] - 表格数据 [['智能体编号', '类型', '当前状态'], ...]
+        注意：敌方智能体不包含子群序号信息（因为通常无法获取）
+        """
+        raw_data = self._backend.fetch_agent_data()
+        agents = raw_data.get('agents', [])
+        
+        table_data = []
+        for agent in agents:
+            # 只处理敌方（蓝军）智能体
+            faction = agent.get('faction', '')
+            if faction == '蓝军':
+                row = [
+                    str(agent.get('id', 'N/A')),
+                    agent.get('type', '未知'),
+                    self._format_status(agent.get('status', 'unknown'))
+                ]
+                table_data.append(row)
+        
+        return table_data
+    
+    def get_agent_data_for_gui(self) -> List[List[str]]:
+        """
+        获取所有无人机数据（已废弃，保留用于向后兼容）
+        建议使用 get_friendly_agent_data_for_gui 和 get_enemy_agent_data_for_gui
+        """
+        # 合并己方和敌方数据（保持向后兼容）
+        friendly_data = self.get_friendly_agent_data_for_gui()
+        enemy_data = self.get_enemy_agent_data_for_gui()
+        
+        # 为敌方数据添加"无"作为子群序号列，以匹配旧格式
+        result = []
+        for row in friendly_data:
+            result.append(row)
+        for row in enemy_data:
+            # 在敌方数据中插入"N/A"作为子群序号（第3列位置）
+            result.append([row[0], row[1], 'N/A', row[2]])
+        
+        return result
     
     def get_unit_gantt_data_for_gui(self) -> Dict[str, Any]:
         """
