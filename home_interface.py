@@ -113,9 +113,19 @@ class HomeInterface(Ui_HomeInterface, QWidget):
         self._update_command_panel_options()
     
     def _update_simulation_time(self):
-        """更新仿真时间（仅当仿真运行时）"""
-        if self._backend._simulation_running:
-            self._backend.update_time(0.1)  # 每次增加0.1秒
+        """
+        更新仿真时间（仅当仿真运行时）
+        
+        注意：时间步管理完全由后端负责，前端只负责触发。
+        这样可以确保：
+        1. 时间步长由后端决定（固定步长、自适应步长等）
+        2. 数据更新与时间步同步
+        3. 不同后端可以有不同的时间步策略
+        """
+        # 检查仿真是否运行（通过后端接口，不访问私有属性）
+        if self._backend.is_simulation_running():
+            # 让后端推进一个时间步（时间步长由后端决定）
+            self._backend.step_simulation()
             # 更新场景（因为位置可能改变）
             scene_data = self._simulation_service.get_scene_data_for_gui()
             self.simulation_canvas.update_scene(scene_data)

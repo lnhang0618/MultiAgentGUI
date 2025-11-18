@@ -68,5 +68,35 @@ class BackendAdapter(ABC):
         返回：命令选项字符串列表
         """
         pass
+    
+    def is_simulation_running(self) -> bool:
+        """
+        检查仿真是否正在运行
+        返回：True表示仿真正在运行，False表示已停止
+        
+        注意：这是一个可选方法，如果后端不支持仿真控制，可以返回False
+        """
+        return False
+    
+    def step_simulation(self) -> bool:
+        """
+        推进仿真一个时间步
+        返回：是否成功推进
+        
+        注意：
+        - 这是一个可选方法，如果后端不支持时间步控制，可以返回False
+        - 时间步长由后端自己决定（固定步长、自适应步长等）
+        - 前端只负责触发，不关心具体的时间步长
+        """
+        return False
+    
+    def get_current_time(self) -> float:
+        """
+        获取当前仿真时间
+        返回：当前时间戳（秒）
+        
+        注意：这是一个可选方法，用于显示当前时间
+        """
+        return 0.0
 
 

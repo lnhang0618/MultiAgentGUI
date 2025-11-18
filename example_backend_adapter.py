@@ -139,11 +139,12 @@ class ExampleBackendAdapter(BackendAdapter):
         ]
     
     def fetch_agent_data(self) -> Dict[str, Any]:
-        """获取Agent相关数据"""
-        # 动态更新Agent位置（模拟移动）
-        if self._simulation_running:
-            self._update_agent_positions()
+        """
+        获取Agent相关数据
         
+        注意：Agent位置的更新在 step_simulation() 中进行，
+        这里只负责返回当前时刻的数据，不进行状态更新。
+        """
         # 合并己方和敌方智能体数据（为了保持接口兼容性）
         # 添加faction字段以便服务层区分
         all_agents = []
@@ -175,14 +176,20 @@ class ExampleBackendAdapter(BackendAdapter):
         }
     
     def fetch_simulation_scene(self, timestamp: float = None) -> Dict[str, Any]:
-        """获取仿真场景数据"""
-        if timestamp is not None:
-            self._current_time = timestamp
+        """
+        获取仿真场景数据
         
-        # 动态更新Agent位置
-        if self._simulation_running:
-            self._update_agent_positions()
-            self._update_trajectories()
+        注意：Agent位置的更新应该在 step_simulation() 中进行，
+        这里只负责返回当前时刻的场景数据。
+        如果传入timestamp参数，可以查询历史时刻的数据（回放功能）。
+        """
+        if timestamp is not None:
+            # 如果指定了时间戳，可以用于回放历史数据
+            # 这里简化处理，直接使用当前时间
+            pass
+        
+        # 注意：Agent位置的更新在 step_simulation() 中完成
+        # 这里不需要再次更新，避免重复计算
         
         # 构建场景数据
         agents = []
@@ -353,9 +360,32 @@ class ExampleBackendAdapter(BackendAdapter):
             points.append([x, y])
         return points
     
-    def update_time(self, delta: float):
-        """更新时间（用于模拟）"""
-        self._current_time += delta
+    def is_simulation_running(self) -> bool:
+        """检查仿真是否正在运行"""
+        return self._simulation_running
+    
+    def step_simulation(self) -> bool:
+        """
+        推进仿真一个时间步
+        
+        注意：时间步长由后端决定，这里使用固定步长0.1秒。
+        不同的后端实现可以使用不同的策略（固定步长、自适应步长等）。
+        """
+        if not self._simulation_running:
+            return False
+        
+        # 固定时间步长：0.1秒
+        time_step = 0.1
+        self._current_time += time_step
+        
+        # 更新Agent位置（基于新的时间步）
+        self._update_agent_positions()
+        
+        return True
+    
+    def get_current_time(self) -> float:
+        """获取当前仿真时间"""
+        return self._current_time
     
     def start_simulation(self):
         """启动仿真"""
@@ -364,5 +394,12 @@ class ExampleBackendAdapter(BackendAdapter):
     def stop_simulation(self):
         """停止仿真"""
         self._simulation_running = False
+    
+    def update_time(self, delta: float):
+        """
+        更新时间（已废弃，保留用于向后兼容）
+        建议使用 step_simulation() 方法
+        """
+        self._current_time += delta
 
 
