@@ -1,15 +1,12 @@
 # services/__init__.py
-from .backend_adapter import BackendAdapter
-from .agent_service import AgentService
-from .task_service import TaskService
-from .command_service import CommandService
-from .simulation_service import SimulationService
+from .mediator_service import MediatorService, DataProvider, CommandHandler
 
 __all__ = [
-    'BackendAdapter',
-    'AgentService',
-    'TaskService',
-    'CommandService',
-    'SimulationService',
+    'MediatorService',
+    'DataProvider',
+    'CommandHandler',
 ]
 
+# 为了向后兼容，保留BackendAdapter和BackendMediator别名
+BackendAdapter = MediatorService
+BackendMediator = MediatorService

@@ -1,37 +1,37 @@
-# example_backend_adapter.py
+# example_mediator_service.py
 """
-示例后端中介服务实现（Example Backend Mediator Implementation）
+示例中介服务实现（Example Mediator Service Implementation）
 
-这是一个完整的 BackendMediator 实现示例，展示了如何：
-1. 继承 BackendMediator 抽象基类（同时实现DataProvider和CommandHandler接口）
+这是一个完整的 MediatorService 实现示例，展示了如何：
+1. 继承 MediatorService 抽象基类（同时实现DataProvider和CommandHandler接口）
 2. 实现所有必需的抽象方法
 3. 提供模拟数据用于开发和测试
 
-开发者可以参考此实现，根据实际需求实现自己的后端中介服务，例如：
-- RestApiBackend: 通过 REST API 连接后端
-- DatabaseBackend: 通过数据库连接后端
-- WebSocketBackend: 通过 WebSocket 连接后端
+开发者可以参考此实现，根据实际需求实现自己的中介服务，例如：
+- RestApiMediatorService: 通过 REST API 连接后端
+- DatabaseMediatorService: 通过数据库连接后端
+- WebSocketMediatorService: 通过 WebSocket 连接后端
 等等。
 
 使用方法：
-    from example_backend_adapter import ExampleBackendAdapter
-    from home_interface import HomeInterface
+    from example_mediator_service import ExampleMediatorService
+    from main_window import MainWindow
     
-    backend = ExampleBackendAdapter()
-    home_interface = HomeInterface(backend=backend)
+    mediator = ExampleMediatorService()
+    main_window = MainWindow(backend=mediator)
 """
 import random
 import math
 from typing import Dict, Any, List
-from services import BackendMediator
+from services import MediatorService
 
 
-class ExampleBackendAdapter(BackendMediator):
+class ExampleMediatorService(MediatorService):
     """
-    示例后端中介服务实现
+    示例中介服务实现
     
-    这是一个完整的 BackendMediator 实现示例，提供模拟数据用于可视化测试。
-    继承 BackendMediator，同时实现DataProvider和CommandHandler接口，可作为开发参考。
+    这是一个完整的 MediatorService 实现示例，提供模拟数据用于可视化测试。
+    继承 MediatorService，同时实现DataProvider和CommandHandler接口，可作为开发参考。
     
     注意：这是一个示例实现，实际项目中需要根据真实后端接口进行适配。
     """
@@ -268,7 +268,7 @@ class ExampleBackendAdapter(BackendMediator):
     
     def receive_command(self, command_data: Dict[str, Any]) -> bool:
         """接收UI的命令并发送到后端（模拟）"""
-        print(f"[ExampleBackendAdapter] 收到命令: {command_data}")
+        print(f"[ExampleMediatorService] 收到命令: {command_data}")
         
         # 模拟命令处理
         command_type = command_data.get('type', 'unknown')
@@ -276,10 +276,10 @@ class ExampleBackendAdapter(BackendMediator):
         
         if '开始' in instruction or 'start' in instruction.lower():
             self._simulation_running = True
-            print("[ExampleBackendAdapter] 仿真已启动")
+            print("[ExampleMediatorService] 仿真已启动")
         elif '停止' in instruction or 'stop' in instruction.lower():
             self._simulation_running = False
-            print("[ExampleBackendAdapter] 仿真已停止")
+            print("[ExampleMediatorService] 仿真已停止")
         
         return True
     
@@ -292,6 +292,18 @@ class ExampleBackendAdapter(BackendMediator):
             "紧急救援任务",
             "物资运输任务"
         ]
+    
+    def get_task_template_content(self, template_name: str) -> str:
+        """获取任务模板的详细内容（instruction文本）"""
+        template_contents = {
+            "标准巡逻任务": "在指定区域进行标准巡逻任务，确保区域安全。巡逻路径：从起点A到终点B，途经关键检查点C、D、E。",
+            "区域侦察任务": "对目标区域进行详细侦察，收集情报信息。侦察范围：坐标(10,20)到(50,60)的矩形区域。",
+            "目标搜索任务": "搜索并定位指定目标。目标特征：红色标记，移动速度中等。搜索区域：半径100米范围内。",
+            "紧急救援任务": "执行紧急救援任务，前往坐标(30,40)救援被困人员。优先级：高。预计耗时：30分钟。",
+            "物资运输任务": "将物资从起点(0,0)运输到终点(100,100)。物资类型：医疗用品。运输方式：无人机运输。"
+        }
+        # 返回模板内容，如果模板不存在则返回模板名称
+        return template_contents.get(template_name, template_name)
     
     def get_task_ids(self) -> List[str]:
         """获取当前任务ID列表"""
