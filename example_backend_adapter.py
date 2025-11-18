@@ -293,8 +293,6 @@ class ExampleBackendAdapter(BackendAdapter):
     def get_command_options(self) -> List[str]:
         """获取可用的命令选项列表"""
         return [
-            "开始仿真",
-            "停止仿真",
             "暂停任务",
             "恢复任务",
             "更新任务优先级",

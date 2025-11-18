@@ -108,6 +108,9 @@ class HomeInterface(Ui_HomeInterface, QWidget):
         # 刷新仿真场景数据
         scene_data = self._simulation_service.get_scene_data_for_gui()
         self.simulation_canvas.update_scene(scene_data)
+        
+        # 刷新命令面板选项（任务ID和命令选项可能会变化）
+        self._update_command_panel_options()
     
     def _update_simulation_time(self):
         """更新仿真时间（仅当仿真运行时）"""
