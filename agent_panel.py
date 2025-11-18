@@ -15,15 +15,15 @@ class AgentInfoPanel(QWidget):
 
         # 创建通用组件
         self.coalition_table = GenericTableWidget(['子群序号', '当前任务', '成员结构'])
-        self.agent_table = GenericTableWidget(['无人机序号', '类型', '子群序号', '当前状态'])
+        self.agent_table = GenericTableWidget(['智能体编号', '类型', '子群序号', '当前状态'])
         self.unit_gantt = GenericGanttChart()
         self.replan_gantt = SelectorChartWidget()  # 用于重规划甘特图
 
         # 注册页面
         self.nav.add_page(self.coalition_table, "coalitions", "子群信息")
-        self.nav.add_page(self.agent_table, "agents", "无人机信息")
+        self.nav.add_page(self.agent_table, "agents", "智能体信息")
         self.nav.add_page(self.unit_gantt, "unit_gantt", "子群甘特图")
-        self.nav.add_page(self.replan_gantt, "replan_gantt", "无人机重规划甘特图")
+        self.nav.add_page(self.replan_gantt, "replan_gantt", "智能体重规划甘特图")
 
     # 提供数据注入接口
     def set_coalition_data(self, data): 

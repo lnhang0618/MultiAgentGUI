@@ -124,3 +124,4 @@ class TaskService:
         }
         return color_map.get(task_type, 'silver')
 
+

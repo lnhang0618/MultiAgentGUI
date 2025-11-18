@@ -91,15 +91,15 @@ class ExampleBackendAdapter(BackendAdapter):
         
         # 无人机数据
         self._agents = [
-            {'id': 1, 'type': '侦察型', 'coalition_id': 0, 'status': 'working', 'x': 20, 'y': 30},
-            {'id': 2, 'type': '攻击型', 'coalition_id': 0, 'status': 'working', 'x': 25, 'y': 35},
-            {'id': 3, 'type': '运输型', 'coalition_id': 0, 'status': 'working', 'x': 22, 'y': 32},
-            {'id': 4, 'type': '侦察型', 'coalition_id': 1, 'status': 'working', 'x': 60, 'y': 70},
-            {'id': 5, 'type': '攻击型', 'coalition_id': 1, 'status': 'working', 'x': 65, 'y': 75},
-            {'id': 6, 'type': '侦察型', 'coalition_id': 2, 'status': 'idle', 'x': 40, 'y': 50},
-            {'id': 7, 'type': '攻击型', 'coalition_id': 2, 'status': 'idle', 'x': 45, 'y': 55},
-            {'id': 8, 'type': '运输型', 'coalition_id': 2, 'status': 'charging', 'x': 50, 'y': 50},
-            {'id': 9, 'type': '侦察型', 'coalition_id': 2, 'status': 'idle', 'x': 42, 'y': 52},
+            {'id': 1, 'type': '侦察型无人机', 'coalition_id': 0, 'status': 'working', 'x': 20, 'y': 30},
+            {'id': 2, 'type': '攻击型无人机', 'coalition_id': 0, 'status': 'working', 'x': 25, 'y': 35},
+            {'id': 3, 'type': '运输型无人机', 'coalition_id': 0, 'status': 'working', 'x': 22, 'y': 32},
+            {'id': 4, 'type': '侦察型无人机', 'coalition_id': 1, 'status': 'working', 'x': 60, 'y': 70},
+            {'id': 5, 'type': '攻击型无人机', 'coalition_id': 1, 'status': 'working', 'x': 65, 'y': 75},
+            {'id': 6, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 40, 'y': 50},
+            {'id': 7, 'type': '攻击型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 45, 'y': 55},
+            {'id': 8, 'type': '运输型无人机', 'coalition_id': 2, 'status': 'charging', 'x': 50, 'y': 50},
+            {'id': 9, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 42, 'y': 52},
         ]
         
         # 任务数据
@@ -313,4 +313,5 @@ class ExampleBackendAdapter(BackendAdapter):
     def stop_simulation(self):
         """停止仿真"""
         self._simulation_running = False
+
 
