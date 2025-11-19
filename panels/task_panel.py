@@ -4,6 +4,7 @@ from typing import List, Tuple, Dict, Any
 from components.navi_panel import NavigationPanel
 from components.generic_tablewidget import GenericTableWidget
 from components.generic_ganntwidget import GenericGanttChart
+from components.generic_taskgraphwidget import GenericTaskGraphWidget
 from qfluentwidgets import BodyLabel
 
 
@@ -22,13 +23,15 @@ class TaskInfoPanel(QWidget):
         # 创建并注册任务专用视图
         self._table = GenericTableWidget(['序号', '任务类型', '区域', '子群', '状态'])
         self._gantt = GenericGanttChart()
+        self._task_graph = GenericTaskGraphWidget()
         self._ltl = BodyLabel()
 
         self._nav.add_page(self._table, "tasks", "任务列表")
         self._nav.add_page(self._gantt, "gantt", "任务甘特图")
         self._nav.add_page(self._ltl, "ltl", "LTL公式")
+        self._nav.add_page(self._task_graph, "graph", "任务关系图")
 
-    def load_data(self, data: Dict[str, Any]):
+    def load_data(self, data: Dict[str, Any], graph_data: Dict[str, Any] = None):
         """
         从中介服务标准格式数据加载任务数据并显示
         
@@ -38,6 +41,13 @@ class TaskInfoPanel(QWidget):
                 'tasks': [...],
                 'ltl_formula': str,
                 'current_time': float
+            }
+            graph_data: MediatorService.get_task_graph_data()返回的任务图数据（可选）
+            {
+                'nodes': [...],
+                'edges': [...],
+                'layout': {...},
+                'style': {...}
             }
         """
         # 转换表格数据
@@ -52,6 +62,10 @@ class TaskInfoPanel(QWidget):
         self._table.set_table_data(table_data)
         self._gantt.update_plot(gantt_data)
         self._ltl.setText(ltl_text)
+        
+        # 更新任务图（如果提供了图数据）
+        if graph_data:
+            self._task_graph.update_plot(graph_data)
     
     def _convert_to_table_data(self, tasks: List[Dict]) -> List[List[str]]:
         """将中介服务任务数据转换为表格数据"""

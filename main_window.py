@@ -72,7 +72,9 @@ class MainWindow(Ui_HomeInterface, QWidget):
         
         # 刷新Task数据
         task_data = self._mediator.fetch_task_data()
-        self.task_panel.load_data(task_data)
+        # 获取任务图数据（可选）
+        graph_data = self._mediator.get_task_graph_data()
+        self.task_panel.load_data(task_data, graph_data)
         
         # 刷新仿真场景数据
         scene_data = self._mediator.fetch_simulation_scene()

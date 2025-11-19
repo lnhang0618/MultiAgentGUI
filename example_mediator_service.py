@@ -318,6 +318,69 @@ class ExampleMediatorService(MediatorService):
             "紧急停止"
         ]
     
+    def get_task_graph_data(self) -> Dict[str, Any]:
+        """
+        获取任务图数据（任务之间的逻辑依赖关系）
+        
+        返回标准化的任务图数据，只包含节点和边的简单结构。
+        这里展示一个示例：任务1 -> 任务2，任务2 -> 任务3，任务1 -> 任务4，任务3 -> 任务4。
+        """
+        # 根据当前任务数据构建节点（只包含id和label）
+        nodes = []
+        for task in self._tasks:
+            task_id = task['id']
+            task_type = task.get('type', 'unknown')
+            task_type_label = self._get_task_type_label(task_type)
+            
+            nodes.append({
+                'id': task_id,
+                'label': f"T{task_id}: {task_type_label}"
+            })
+        
+        # 构建边（任务依赖关系）
+        # 示例：
+        # - 先后顺序关系（sequence）：任务1 -> 任务2，任务2 -> 任务3，任务3 -> 任务4
+        # - 同时关系（parallel）：任务1 和 任务3 需要同时执行
+        edges = []
+        task_ids = [task['id'] for task in self._tasks]
+        
+        # 先后顺序关系（有箭头）
+        # 任务1 -> 任务2（如果存在）
+        if 1 in task_ids and 2 in task_ids:
+            edges.append({'source': 1, 'target': 2, 'type': 'sequence'})
+        
+        # 任务2 -> 任务3（如果存在）
+        if 2 in task_ids and 3 in task_ids:
+            edges.append({'source': 2, 'target': 3, 'type': 'sequence'})
+        
+        # 任务3 -> 任务4（如果存在）
+        if 3 in task_ids and 4 in task_ids:
+            edges.append({'source': 3, 'target': 4, 'type': 'sequence'})
+        
+        # 同时关系（无箭头虚线）
+        # 任务1 和 任务3 需要同时执行（如果存在）
+        if 1 in task_ids and 3 in task_ids:
+            edges.append({'source': 1, 'target': 3, 'type': 'parallel'})
+        
+        return {
+            'nodes': nodes,
+            'edges': edges,
+            'layout': {
+                'algorithm': 'hierarchical'  # 使用层次布局展示依赖关系
+            }
+        }
+    
+    def _get_task_type_label(self, task_type: str) -> str:
+        """将任务类型转换为中文标签"""
+        type_map = {
+            'patrol': '巡逻',
+            'surveillance': '侦察',
+            'search': '搜索',
+            'rescue': '救援',
+            'transport': '运输'
+        }
+        return type_map.get(task_type, task_type)
+    
     def _update_agent_positions(self):
         """更新Agent位置（模拟移动）"""
         # 更新己方智能体位置

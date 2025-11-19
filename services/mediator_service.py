@@ -171,6 +171,47 @@ class DataProvider(ABC):
         # 默认实现：返回模板名称（子类可以覆盖此方法提供实际内容）
         return template_name
     
+    def get_task_graph_data(self) -> Dict[str, Any]:
+        """
+        获取任务图数据（任务之间的逻辑依赖关系）
+        
+        返回：标准化的任务图数据字典，包含以下字段：
+        {
+            'nodes': [
+                {
+                    'id': str | int,              # 节点ID（唯一标识，通常对应任务ID）
+                    'label': str                 # 节点标签（显示文本，如任务名称）
+                },
+                ...
+            ],
+            'edges': [
+                {
+                    'source': str | int,           # 源节点ID
+                    'target': str | int,          # 目标节点ID
+                    'type': str                    # 边类型："sequence"（先后顺序，有箭头）或 "parallel"（同时关系，无箭头虚线），默认"sequence"
+                },
+                ...
+            ],
+            'layout': {                           # 布局配置（可选）
+                'algorithm': str                  # 布局算法（'spring'/'circular'/'hierarchical'，默认'spring'）
+            }
+        }
+        
+        注意：
+        - 这是一个可选方法，如果后端不支持任务图，可以返回空数据
+        - 任务图表示任务之间的逻辑依赖关系，不涉及coalition信息
+        - UI使用简单的圆形节点展示关系：
+          * 先后顺序关系（type="sequence"）：有箭头的实线
+          * 同时关系（type="parallel"）：无箭头的虚线
+        - 作为适配器，此方法应将后端原始数据转换为上述标准格式
+        """
+        # 默认实现：返回空数据（子类可以覆盖此方法提供实际数据）
+        return {
+            'nodes': [],
+            'edges': [],
+            'layout': {'algorithm': 'spring'}
+        }
+    
     @abstractmethod
     def get_task_ids(self) -> List[str]:
         """
