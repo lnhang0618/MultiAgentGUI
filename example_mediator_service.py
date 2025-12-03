@@ -15,15 +15,128 @@
 
 使用方法：
     from example_mediator_service import ExampleMediatorService
-    from main_window import MainWindow
+    from main_window_controller import MainWindowController
     
     mediator = ExampleMediatorService()
-    main_window = MainWindow(backend=mediator)
+    controller = MainWindowController(mediator=mediator)
+    controller.show()
 """
 import random
 import math
-from typing import Dict, Any, List
-from services import MediatorService
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from typing import Any as TypingAny
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import QPen, QBrush, QColor
+from PyQt5.QtCore import Qt
+import pyqtgraph as pg
+
+from MultiAgentGUI.services.mediator_service import MediatorService
+from MultiAgentGUI.services.canvas_renderer import CanvasRenderer
+
+
+class ExampleCanvasRenderer(CanvasRenderer):
+    """
+    示例绘制器实现
+    
+    封装 ExampleMediatorService 的绘制逻辑，实现 CanvasRenderer 接口
+    """
+    
+    def __init__(self, mediator: 'ExampleMediatorService'):
+        """
+        初始化绘制器
+        
+        参数：
+            mediator: ExampleMediatorService 实例，用于获取数据和绘制方法
+        """
+        self.mediator = mediator
+        # 每个 canvas 对应的绘图状态（背景、图层等）
+        self._canvas_states: Dict[int, Dict[str, Any]] = {}
+    
+    def render_initial_scene(self, canvas: TypingAny, scene_data: Dict[str, Any]) -> None:
+        """
+        渲染初始场景到画布
+        
+        包括：设置背景图、绘制智能体、目标、区域、轨迹等
+        """
+        # 初始化画布状态
+        state = self._init_canvas_state(canvas)
+        
+        # 获取场景限制
+        limits = scene_data.get("limits", {
+            "x_min": self.mediator.SCENE_X_MIN,
+            "x_max": self.mediator.SCENE_X_MAX,
+            "y_min": self.mediator.SCENE_Y_MIN,
+            "y_max": self.mediator.SCENE_Y_MAX,
+        })
+        
+        # 设置背景图
+        bg_path = self.mediator._get_background_image_path()
+        if bg_path:
+            self.render_background(canvas, bg_path)
+        
+        # 绘制场景数据
+        self.render_scene_update(canvas, scene_data)
+    
+    def render_scene_update(self, canvas: TypingAny, scene_data: Dict[str, Any]) -> None:
+        """
+        渲染场景更新到画布
+        """
+        canvas_id = id(canvas)
+        if canvas_id not in self._canvas_states:
+            # 如果画布状态不存在，先初始化
+            state = self._init_canvas_state(canvas)
+        else:
+            state = self._canvas_states[canvas_id]
+        
+        # 使用 mediator 的绘制方法
+        self.mediator._render_scene_on_canvas(state, scene_data)
+    
+    def render_background(self, canvas: TypingAny, background_path: Optional[str]) -> None:
+        """
+        渲染背景图到画布
+        """
+        if not background_path:
+            return
+        
+        canvas_id = id(canvas)
+        if canvas_id not in self._canvas_states:
+            state = self._init_canvas_state(canvas)
+        else:
+            state = self._canvas_states[canvas_id]
+        
+        # 获取场景限制
+        scene_data = self.mediator.fetch_simulation_scene()
+        limits = scene_data.get("limits", {
+            "x_min": self.mediator.SCENE_X_MIN,
+            "x_max": self.mediator.SCENE_X_MAX,
+            "y_min": self.mediator.SCENE_Y_MIN,
+            "y_max": self.mediator.SCENE_Y_MAX,
+        })
+        
+        # 使用 mediator 的背景设置方法
+        self.mediator._set_canvas_background(state, background_path, limits)
+    
+    def _init_canvas_state(self, canvas: TypingAny, name: str = "") -> Dict[str, Any]:
+        """
+        初始化单个画布的状态
+        
+        这是从 ExampleMediatorService 迁移过来的方法
+        """
+        state = {
+            "name": name,
+            "canvas": canvas,
+            "background": None,
+            "agents": pg.ScatterPlotItem(size=12, pxMode=True),
+            "targets": pg.ScatterPlotItem(size=10, pxMode=True),
+            "regions": [],
+            "trajectories": [],
+        }
+        canvas.addItem(state["agents"])
+        canvas.addItem(state["targets"])
+        self._canvas_states[id(canvas)] = state
+        return state
 
 
 class ExampleMediatorService(MediatorService):
@@ -36,13 +149,39 @@ class ExampleMediatorService(MediatorService):
     注意：这是一个示例实现，实际项目中需要根据真实后端接口进行适配。
     """
     
+    # 场景坐标范围常量（匹配背景图的实际区域）
+    SCENE_X_MIN = 0.0
+    SCENE_X_MAX = 100.0
+    SCENE_Y_MIN = 0.0
+    SCENE_Y_MAX = 56.0  # 背景图的实际高度
+    
     def __init__(self):
         """初始化模拟数据"""
+        super().__init__()  # 调用父类初始化，设置 _ui_callbacks
         self._current_time = 0.0
         self._simulation_running = False
+
+        # 绑定到前端视图的引用（可选，GenericSimulationCanvas 实例）
+        self._sim_view_canvas = None
+        self._design_canvas = None
+        # 每个 canvas 对应的绘图状态（背景、图层等）
+        self._canvas_states: Dict[int, Dict[str, Any]] = {}
+        
+        # 绘制器实例（延迟初始化）
+        self._renderer: Optional[ExampleCanvasRenderer] = None
         
         # 初始化模拟数据
         self._init_mock_data()
+    
+    def get_canvas_renderer(self) -> Optional[CanvasRenderer]:
+        """
+        获取画布绘制器
+        
+        返回 ExampleCanvasRenderer 实例，封装后端特定的绘制逻辑
+        """
+        if self._renderer is None:
+            self._renderer = ExampleCanvasRenderer(self)
+        return self._renderer
     
     def _init_mock_data(self):
         """初始化模拟数据"""
@@ -91,24 +230,26 @@ class ExampleMediatorService(MediatorService):
         
         # 智能体数据：分为己方和敌方两个独立的列表，结构更清晰
         # 己方（红军）智能体：包含完整的子群信息和状态
+        # 注意：y 坐标范围限制在 [0, 56] 以匹配背景图区域
         self._friendly_agents = [
-            {'id': 1, 'type': '侦察型无人机', 'coalition_id': 0, 'status': 'working', 'x': 20, 'y': 30},
-            {'id': 2, 'type': '攻击型无人机', 'coalition_id': 0, 'status': 'working', 'x': 25, 'y': 35},
-            {'id': 3, 'type': '运输型无人机', 'coalition_id': 0, 'status': 'working', 'x': 22, 'y': 32},
-            {'id': 4, 'type': '侦察型无人机', 'coalition_id': 1, 'status': 'working', 'x': 60, 'y': 70},
-            {'id': 5, 'type': '攻击型无人机', 'coalition_id': 1, 'status': 'working', 'x': 65, 'y': 75},
-            {'id': 6, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 40, 'y': 50},
-            {'id': 7, 'type': '攻击型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 45, 'y': 55},
-            {'id': 8, 'type': '运输型无人机', 'coalition_id': 2, 'status': 'charging', 'x': 50, 'y': 50},
-            {'id': 9, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 42, 'y': 52},
+            {'id': 1, 'type': '侦察型无人机', 'coalition_id': 0, 'status': 'working', 'x': 20, 'y': 15},
+            {'id': 2, 'type': '攻击型无人机', 'coalition_id': 0, 'status': 'working', 'x': 25, 'y': 18},
+            {'id': 3, 'type': '运输型无人机', 'coalition_id': 0, 'status': 'working', 'x': 22, 'y': 16},
+            {'id': 4, 'type': '侦察型无人机', 'coalition_id': 1, 'status': 'working', 'x': 60, 'y': 35},
+            {'id': 5, 'type': '攻击型无人机', 'coalition_id': 1, 'status': 'working', 'x': 65, 'y': 38},
+            {'id': 6, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 40, 'y': 25},
+            {'id': 7, 'type': '攻击型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 45, 'y': 28},
+            {'id': 8, 'type': '运输型无人机', 'coalition_id': 2, 'status': 'charging', 'x': 50, 'y': 25},
+            {'id': 9, 'type': '侦察型无人机', 'coalition_id': 2, 'status': 'idle', 'x': 42, 'y': 26},
         ]
         
         # 敌方（蓝军）智能体：不包含子群信息，状态可能未知或不完整
+        # 注意：y 坐标范围限制在 [0, 56] 以匹配背景图区域
         self._enemy_agents = [
-            {'id': 10, 'type': '侦察型无人机', 'status': 'unknown', 'x': 10, 'y': 10},
-            {'id': 11, 'type': '攻击型无人机', 'status': 'unknown', 'x': 15, 'y': 15},
-            {'id': 12, 'type': '侦察型无人机', 'status': 'unknown', 'x': 80, 'y': 20},
-            {'id': 13, 'type': '攻击型无人机', 'status': 'unknown', 'x': 85, 'y': 25},
+            {'id': 10, 'type': '侦察型无人机', 'status': 'unknown', 'x': 10, 'y': 5},
+            {'id': 11, 'type': '攻击型无人机', 'status': 'unknown', 'x': 15, 'y': 8},
+            {'id': 12, 'type': '侦察型无人机', 'status': 'unknown', 'x': 80, 'y': 10},
+            {'id': 13, 'type': '攻击型无人机', 'status': 'unknown', 'x': 85, 'y': 12},
         ]
         
         # 任务数据
@@ -126,16 +267,18 @@ class ExampleMediatorService(MediatorService):
         ]
         
         # 场景数据
+        # 注意：y 坐标范围限制在 [0, 56] 以匹配背景图区域
         self._targets = [
-            {'id': 1, 'x': 30, 'y': 40, 'active': True},
-            {'id': 2, 'x': 70, 'y': 80, 'active': True},
-            {'id': 3, 'x': 50, 'y': 60, 'active': False},
+            {'id': 1, 'x': 30, 'y': 20, 'active': True},
+            {'id': 2, 'x': 70, 'y': 40, 'active': True},
+            {'id': 3, 'x': 50, 'y': 30, 'active': False},
         ]
         
+        # 注意：regions 的 y 坐标范围限制在 [0, 56] 以匹配背景图区域
         self._regions = [
-            {'type': 'circle', 'center': (35, 45), 'radius': 8, 'color': '#AAAAAA'},
-            {'type': 'polygon', 'points': [(60, 70), (80, 70), (80, 90), (60, 90)], 'color': '#DDD700'},
-            {'type': 'circle', 'center': (45, 55), 'radius': 5, 'color': '#FFAAAA'},
+            {'type': 'circle', 'center': (35, 22), 'radius': 8, 'color': '#AAAAAA'},
+            {'type': 'polygon', 'points': [(60, 35), (80, 35), (80, 45), (60, 45)], 'color': '#DDD700'},
+            {'type': 'circle', 'center': (45, 28), 'radius': 5, 'color': '#FFAAAA'},
         ]
     
     def fetch_agent_data(self) -> Dict[str, Any]:
@@ -259,12 +402,404 @@ class ExampleMediatorService(MediatorService):
             'trajectories': trajectories,
             'time': self._current_time,
             'limits': {
-                'x_min': 0,
-                'x_max': 100,
-                'y_min': 0,
-                'y_max': 100
+                'x_min': self.SCENE_X_MIN,
+                'x_max': self.SCENE_X_MAX,
+                'y_min': self.SCENE_Y_MIN,
+                'y_max': self.SCENE_Y_MAX  # 匹配背景图的实际区域高度
             }
         }
+
+    # ---------- 与前端视图的轻量集成（基于 GenericSimulationCanvas） ----------
+    def bind_simulation_views(self, simulation_view_panel, simulation_design_panel) -> None:
+        """
+        绑定前端的仿真视图和场景设计视图。
+
+        - 使用 MultiAgentGUI/test_background/images.jpg 作为示例背景
+        - 在两个视图上绘制初始的矢量场景（确保两个画布都被正确初始化）
+
+        改进点：
+        1. 添加断言确保两个画布都不为 None
+        2. 统一处理两个画布，避免遗漏
+        3. 添加调试日志，便于排查问题
+        """
+        # 获取画布引用，并添加断言确保不为 None
+        self._sim_view_canvas = simulation_view_panel.get_canvas()
+        self._design_canvas = simulation_design_panel.get_canvas()
+        
+        # 断言检查：确保两个画布都成功获取
+        assert self._sim_view_canvas is not None, \
+            "SimulationViewPanel.get_canvas() 返回了 None，请检查面板初始化"
+        assert self._design_canvas is not None, \
+            "SimulationDesignPanel.get_canvas() 返回了 None，请检查面板初始化"
+        
+        # 统一处理两个画布：使用列表和循环，确保两个画布都被初始化
+        canvases = [
+            ("simulation_view", self._sim_view_canvas),
+            ("simulation_design", self._design_canvas),
+        ]
+        
+        states = []
+        for name, canvas in canvases:
+            state = self._init_canvas_state(canvas, name)
+            states.append(state)
+            print(f"[ExampleMediatorService] 已初始化画布: {name} (id={id(canvas)})")
+
+        # 构造一份当前场景数据，用于初始化 limits 和矢量图
+        scene_data = self.fetch_simulation_scene()
+        limits = scene_data.get("limits", {
+            "x_min": self.SCENE_X_MIN,
+            "x_max": self.SCENE_X_MAX,
+            "y_min": self.SCENE_Y_MIN,
+            "y_max": self.SCENE_Y_MAX,  # 匹配背景图的实际区域高度
+        })
+
+        # 获取背景图路径
+        bg_path_str = self._get_background_image_path()
+
+        # 统一设置背景图并绘制初始矢量层（确保两个画布都被处理）
+        for state in states:
+            canvas_name = state.get("name", "unknown")
+            try:
+                if bg_path_str:
+                    self._set_canvas_background(state, bg_path_str, limits)
+                    print(f"[ExampleMediatorService] 已设置背景图: {canvas_name}")
+                self._render_scene_on_canvas(state, scene_data)
+                print(f"[ExampleMediatorService] 已绘制矢量场景: {canvas_name}")
+            except Exception as e:
+                print(f"[ExampleMediatorService] 警告: 初始化画布 {canvas_name} 时出错: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # 最终验证：确保两个画布的状态都已保存
+        assert len(self._canvas_states) == 2, \
+            f"预期初始化 2 个画布，但实际只初始化了 {len(self._canvas_states)} 个"
+        print(f"[ExampleMediatorService] 绑定完成，共初始化 {len(self._canvas_states)} 个画布")
+    
+    def _init_canvas_state(self, canvas, name: str = "") -> Dict[str, Any]:
+        """
+        初始化单个画布的状态（提取为独立方法，便于复用和测试）。
+        
+        参数:
+            canvas: GenericSimulationCanvas 实例
+            name: 画布名称（用于调试日志）
+        
+        返回:
+            画布状态字典
+        """
+        state = {
+            "name": name,  # 添加名称便于调试
+            "canvas": canvas,
+            "background": None,
+            "agents": pg.ScatterPlotItem(size=12, pxMode=True),
+            "targets": pg.ScatterPlotItem(size=10, pxMode=True),
+            "regions": [],      # List[QGraphicsItem]
+            "trajectories": [], # List[PlotDataItem]
+        }
+        canvas.addItem(state["agents"])
+        canvas.addItem(state["targets"])
+        self._canvas_states[id(canvas)] = state
+        return state
+    
+    def _get_background_image_path(self) -> str:
+        """
+        获取背景图路径（提取为独立方法，便于修改和测试）。
+        
+        返回:
+            背景图路径字符串，如果文件不存在则返回空字符串
+        """
+        base_dir = Path(__file__).resolve().parent
+        bg_path = base_dir / "test_background" / "images.jpg"
+        if bg_path.exists():
+            return str(bg_path)
+        else:
+            print(f"[ExampleMediatorService] 警告: 背景图不存在: {bg_path}")
+            return ""
+
+    def handle_design_scene_event(self, event: Dict[str, Any]) -> None:
+        """
+        处理来自场景视图的交互事件（示例实现：只打印日志）。
+
+        实际项目中，应该在这里根据事件修改后端场景模型，
+        然后基于新的场景数据调用 _render_scene_on_canvas 刷新前端。
+        """
+        print(f"[ExampleMediatorService] 场景交互事件: {event}")
+    
+    def import_background_file(self, file_path: str) -> None:
+        """
+        导入背景图文件（数据处理层）。
+        
+        注意：此方法只负责数据处理，不包含UI操作（如文件对话框）。
+        UI操作（文件选择）应由Controller负责。
+        
+        参数：
+            file_path: 背景图文件路径
+        """
+        if not file_path:
+            print("[ExampleMediatorService] 警告: 文件路径为空")
+            return
+        
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            print(f"[ExampleMediatorService] 警告: 文件不存在: {file_path}")
+            return
+        
+        print(f"[ExampleMediatorService] 导入背景图: {file_path}")
+        
+        # 更新所有画布的背景图
+        scene_data = self.fetch_simulation_scene()
+        limits = scene_data.get("limits", {
+            "x_min": self.SCENE_X_MIN,
+            "x_max": self.SCENE_X_MAX,
+            "y_min": self.SCENE_Y_MIN,
+            "y_max": self.SCENE_Y_MAX,
+        })
+        
+        # 为所有已绑定的画布设置新背景
+        for state in self._canvas_states.values():
+            try:
+                self._set_canvas_background(state, file_path, limits)
+                print(f"[ExampleMediatorService] 已更新画布背景: {state.get('name', 'unknown')}")
+            except Exception as e:
+                print(f"[ExampleMediatorService] 更新背景图失败: {e}")
+    
+    def import_vector_file(self, file_path: str) -> None:
+        """
+        导入矢量图文件（数据处理层）。
+        
+        注意：此方法只负责数据处理，不包含UI操作（如文件对话框）。
+        UI操作（文件选择）应由Controller负责。
+        
+        参数：
+            file_path: 矢量图文件路径（SVG、DXF等）
+        """
+        if not file_path:
+            print("[ExampleMediatorService] 警告: 文件路径为空")
+            return
+        
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            print(f"[ExampleMediatorService] 警告: 文件不存在: {file_path}")
+            return
+        
+        print(f"[ExampleMediatorService] 导入矢量图: {file_path}")
+        
+        # 示例实现：解析矢量图文件并添加到场景
+        # 这里简化处理，实际项目中需要根据文件格式（SVG、DXF等）进行解析
+        file_ext = file_path_obj.suffix.lower()
+        
+        if file_ext == '.svg':
+            # TODO: 解析SVG文件并添加到场景
+            print("[ExampleMediatorService] SVG文件解析（待实现）")
+            # 示例：可以添加一个区域到场景
+            # self._regions.append({...})
+        elif file_ext == '.dxf':
+            # TODO: 解析DXF文件并添加到场景
+            print("[ExampleMediatorService] DXF文件解析（待实现）")
+        else:
+            print(f"[ExampleMediatorService] 不支持的矢量图格式: {file_ext}")
+        
+        # 刷新所有画布显示
+        scene_data = self.fetch_simulation_scene()
+        for state in self._canvas_states.values():
+            try:
+                self._render_scene_on_canvas(state, scene_data)
+            except Exception as e:
+                print(f"[ExampleMediatorService] 刷新画布失败: {e}")
+    
+    def handle_planner_selection(self, faction: str, planner_name: str) -> None:
+        """处理规划器选择变化（示例实现：只打印日志）"""
+        print(f"[ExampleMediatorService] 规划器选择变化: {faction} = {planner_name}（接口已预留，待实现）")
+        # TODO: 实现规划器切换逻辑
+    
+    def get_planner_options(self) -> tuple:
+        """获取可用的规划器选项（示例实现：返回模拟数据）"""
+        # 示例：返回模拟的规划器列表
+        red_planners = ["规划器A", "规划器B", "规划器C"]
+        blue_planners = ["规划器X", "规划器Y", "规划器Z"]
+        return (red_planners, blue_planners)
+
+    # ---------- 简单的场景数据刷新示例 ----------
+    def refresh_simulation_canvas(self) -> None:
+        """示例：从当前仿真状态刷新两个仿真画布。"""
+        if self._sim_view_canvas is None or self._design_canvas is None:
+            return
+
+        scene = self.fetch_simulation_scene()
+        for state in self._canvas_states.values():
+            self._render_scene_on_canvas(state, scene)
+
+    # ---------- 画布背景和矢量层绘制实现（示例） ----------
+    def _set_canvas_background(
+        self,
+        state: Dict[str, Any],
+        image_path: str,
+        limits: Dict[str, float],
+    ) -> None:
+        """在指定画布上设置背景图，并与逻辑坐标 limits 对齐。"""
+        canvas = state["canvas"]
+        img = QtGui.QImage(image_path)
+        if img.isNull():
+            return
+
+        import numpy as np
+
+        ptr = img.bits()
+        ptr.setsize(img.byteCount())
+        arr = np.array(ptr, dtype=np.uint8).reshape(img.height(), img.width(), 4)
+
+        # 注意：QImage 的内部存储与 pyqtgraph.ImageItem 的期望轴顺序不同，
+        # 直接使用会导致显示时顺时针/逆时针旋转 90°。
+        # 这里通过 np.rot90 做一次纠正，使可视化方向与原图一致。
+        #
+        # 如果你发现方向仍然不对，可以把 k 改成 1 或 3，再运行一次观察效果：
+        #   - k = -1（或 3）：逆时针旋转 90°
+        #   - k = 1：顺时针旋转 90°
+        arr = np.rot90(arr, k=-1)
+
+        if state["background"] is None:
+            bg_item = pg.ImageItem(arr)
+            bg_item.setZValue(-1000)
+            canvas.addItem(bg_item)
+            state["background"] = bg_item
+        else:
+            state["background"].setImage(arr)
+            bg_item = state["background"]
+
+        x_min = float(limits.get("x_min", 0.0))
+        x_max = float(limits.get("x_max", 100.0))
+        y_min = float(limits.get("y_min", 0.0))
+        y_max = float(limits.get("y_max", 100.0))
+
+        world_w = max(x_max - x_min, 1e-6)
+        world_h = max(y_max - y_min, 1e-6)
+        img_h, img_w = arr.shape[:2]
+
+        sx = world_w / img_w
+        sy = world_h / img_h
+        
+        # 使用 max 而不是 min，让背景图覆盖整个坐标范围（而不是被压缩）
+        # 这样可以确保背景图至少填满整个显示区域，不会变小
+        s = max(sx, sy)
+
+        tr = QtGui.QTransform()
+        tr.translate(x_min, y_min)
+        tr.scale(s, s)
+        bg_item.setTransform(tr)
+
+        # 锁定坐标范围并适配视图
+        # xMin/xMax/yMin/yMax 限制平移范围，
+        # min*/max*Range 进一步限制缩放倍数，避免无限缩小/放大导致“只剩网格什么都看不到”。
+        zoom_min_factor = 0.2  # 最多放大到原来的 5 倍（可根据需要调整）
+        zoom_max_factor = 1.0  # 最多缩小到刚好能看到完整场景
+        canvas.setLimits(
+            xMin=x_min,
+            xMax=x_max,
+            yMin=y_min,
+            yMax=y_max,
+            minXRange=world_w * zoom_min_factor,
+            maxXRange=world_w * zoom_max_factor,
+            minYRange=world_h * zoom_min_factor,
+            maxYRange=world_h * zoom_max_factor,
+        )
+        canvas.setXRange(x_min, x_max, padding=0.02)
+        canvas.setYRange(y_min, y_max, padding=0.02)
+
+    def _render_scene_on_canvas(self, state: Dict[str, Any], scene: Dict[str, Any]) -> None:
+        """
+        将标准化场景数据绘制到给定画布的矢量层上。
+
+        注意：这里只是一个示例实现，真实项目中可以替换为自定义的绘制策略。
+        """
+        canvas = state["canvas"]
+        agents_item: pg.ScatterPlotItem = state["agents"]
+        targets_item: pg.ScatterPlotItem = state["targets"]
+        regions: List[QtWidgets.QGraphicsItem] = state["regions"]
+        trajectories: List[pg.PlotDataItem] = state["trajectories"]
+
+        # Agents
+        agents = scene.get("agents", [])
+        if agents:
+            agents_item.setData(
+                x=[float(a.get("x", 0.0)) for a in agents],
+                y=[float(a.get("y", 0.0)) for a in agents],
+                brush=[pg.mkBrush(a.get("color", "#FF0000")) for a in agents],
+                symbol=[a.get("symbol", "o") for a in agents],
+            )
+        else:
+            agents_item.clear()
+
+        # Targets（只画 active=True）
+        targets_src = scene.get("targets", [])
+        targets = [t for t in targets_src if t.get("active", True)]
+        if targets:
+            targets_item.setData(
+                x=[float(t.get("x", 0.0)) for t in targets],
+                y=[float(t.get("y", 0.0)) for t in targets],
+                brush=[pg.mkBrush(t.get("color", "#223399")) for t in targets],
+            )
+        else:
+            targets_item.clear()
+
+        # Regions：清空旧的重新画
+        for item in regions:
+            try:
+                canvas.removeItem(item)
+            except Exception:
+                pass
+        regions.clear()
+
+        for region in scene.get("regions", []):
+            r_type = region.get("type")
+            color = region.get("color", "#AAAAAA")
+            pen = QtGui.QPen(QColor(color))
+            pen.setWidthF(1.0)
+            if r_type == "circle":
+                cx, cy = region.get("center", (0.0, 0.0))
+                radius = float(region.get("radius", 1.0))
+                item = QtWidgets.QGraphicsEllipseItem(
+                    cx - radius, cy - radius, 2 * radius, 2 * radius
+                )
+                item.setPen(pen)
+                item.setBrush(QBrush(Qt.NoBrush))
+                item.setZValue(-500)
+                canvas.addItem(item)
+                regions.append(item)
+            elif r_type == "polygon":
+                pts = region.get("points", [])
+                if len(pts) >= 3:
+                    poly = QtGui.QPolygonF(
+                        [QtCore.QPointF(float(x), float(y)) for x, y in pts]
+                    )
+                    item = QtWidgets.QGraphicsPolygonItem(poly)
+                    item.setPen(pen)
+                    item.setBrush(QBrush(Qt.NoBrush))
+                    item.setZValue(-500)
+                    canvas.addItem(item)
+                    regions.append(item)
+
+        # Trajectories：清空旧的重新画
+        for item in trajectories:
+            try:
+                canvas.removeItem(item)
+            except Exception:
+                pass
+        trajectories.clear()
+
+        for traj in scene.get("trajectories", []):
+            pts = traj.get("points", [])
+            if len(pts) < 2:
+                continue
+            xs = [float(p[0]) for p in pts]
+            ys = [float(p[1]) for p in pts]
+            color = traj.get("color", "#FF0000")
+            item = pg.PlotDataItem(
+                x=xs,
+                y=ys,
+                pen=pg.mkPen(color, width=2),
+            )
+            item.setZValue(-400)
+            canvas.addItem(item)
+            trajectories.append(item)
     
     def receive_command(self, command_data: Dict[str, Any]) -> bool:
         """接收UI的命令并发送到后端（模拟）"""
@@ -277,9 +812,33 @@ class ExampleMediatorService(MediatorService):
         if '开始' in instruction or 'start' in instruction.lower():
             self._simulation_running = True
             print("[ExampleMediatorService] 仿真已启动")
+            
+            # 示例：后端自己决定显示成功通知
+            self._call_ui_callback(
+                'show_notification',
+                message="仿真已成功启动",
+                notification_type="success",
+                duration=3000
+            )
         elif '停止' in instruction or 'stop' in instruction.lower():
             self._simulation_running = False
             print("[ExampleMediatorService] 仿真已停止")
+            
+            # 示例：后端自己决定显示信息通知
+            self._call_ui_callback(
+                'show_notification',
+                message="仿真已停止",
+                notification_type="info",
+                duration=2000
+            )
+        elif command_type == 'create_task':
+            # 示例：创建任务时显示警告通知
+            self._call_ui_callback(
+                'show_notification',
+                message="任务创建成功，但需要注意资源限制",
+                notification_type="warning",
+                duration=5000
+            )
         
         return True
     
@@ -399,27 +958,30 @@ class ExampleMediatorService(MediatorService):
                     speed = 0.5
                     agent['x'] += (dx / distance) * speed
                     agent['y'] += (dy / distance) * speed
+                    # 限制在背景图区域内
+                    agent['x'] = max(self.SCENE_X_MIN, min(self.SCENE_X_MAX, agent['x']))
+                    agent['y'] = max(self.SCENE_Y_MIN, min(self.SCENE_Y_MAX, agent['y']))
                 else:
                     agent['status'] = 'idle'
             elif agent['status'] == 'idle' and random.random() < 0.1:
-                # 随机移动
+                # 随机移动（限制在背景图区域内）
                 agent['x'] += random.uniform(-2, 2)
                 agent['y'] += random.uniform(-2, 2)
-                agent['x'] = max(0, min(100, agent['x']))
-                agent['y'] = max(0, min(100, agent['y']))
+                agent['x'] = max(self.SCENE_X_MIN, min(self.SCENE_X_MAX, agent['x']))
+                agent['y'] = max(self.SCENE_Y_MIN, min(self.SCENE_Y_MAX, agent['y']))
         
         # 更新敌方智能体位置
         for agent in self._enemy_agents:
             # 敌方智能体：模拟观测到的移动（更随机，速度可能不同）
             # 由于无法获取敌方完整信息，移动模式更不确定
             if random.random() < 0.3:  # 30%概率移动
-                # 随机方向移动
+                # 随机方向移动（限制在背景图区域内）
                 angle = random.uniform(0, 2 * math.pi)
                 speed = random.uniform(0.2, 0.8)  # 速度不确定
                 agent['x'] += math.cos(angle) * speed
                 agent['y'] += math.sin(angle) * speed
-                agent['x'] = max(0, min(100, agent['x']))
-                agent['y'] = max(0, min(100, agent['y']))
+                agent['x'] = max(self.SCENE_X_MIN, min(self.SCENE_X_MAX, agent['x']))
+                agent['y'] = max(self.SCENE_Y_MIN, min(self.SCENE_Y_MAX, agent['y']))
     
     def _update_trajectories(self):
         """更新轨迹（已通过fetch_simulation_scene中的逻辑实现）"""

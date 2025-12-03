@@ -1,12 +1,10 @@
 # services/__init__.py
-from .mediator_service import MediatorService, DataProvider, CommandHandler
+from MultiAgentGUI.services.mediator_service import MediatorService, DataProvider, CommandHandler
+from MultiAgentGUI.services.canvas_renderer import CanvasRenderer
 
 __all__ = [
     'MediatorService',
     'DataProvider',
     'CommandHandler',
+    'CanvasRenderer',
 ]
-
-# 为了向后兼容，保留BackendAdapter和BackendMediator别名
-BackendAdapter = MediatorService
-BackendMediator = MediatorService

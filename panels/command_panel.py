@@ -1,225 +1,210 @@
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt5.QtCore import pyqtSignal
-from ui.UI_CommandInterface import Ui_CommandInterface
-from typing import List
-from services import MediatorService
-from qfluentwidgets import FluentIcon as FIF
-import datetime
+from qfluentwidgets import BodyLabel, PlainTextEdit, ComboBox
+from datetime import datetime
+from typing import Dict, Any
 
-class CommandPanel(Ui_CommandInterface, QWidget):
+from MultiAgentGUI.components.panel_header import PanelHeader
+from MultiAgentGUI.themes import Theme
+
+
+class CommandPanel(QWidget):
     """
-    命令界面面板
-    负责处理用户命令输入和按钮点击事件
+    精简版命令面板，仅提供两行结构：
+    - 第一行：输入指令文本（多行文本框）
+    - 第二行（横向）：发布指令模板下拉框 + 修改指令模板下拉框 + 确认发送按钮
+    不包含原来的语音输入、任务重规划、仿真控制等功能。
     """
-    # 定义信号：当命令执行成功需要刷新数据时发出
-    command_executed = pyqtSignal()
     
-    def __init__(self, mediator: MediatorService, parent=None):
-        """
-        初始化命令界面
-        参数：
-            mediator: MediatorService实例（实现CommandHandler接口）
-            parent: 父组件
-        """
-        super().__init__(parent=parent)
-        self.setupUi(self)
-        
-        # 保存MediatorService实例
-        self._mediator = mediator
-        
-        # 标志：是否正在刷新选项（避免刷新时触发自动填入）
-        self._is_refreshing_options = False
-        
-        self.SmoothScrollArea.setStyleSheet("background-color:transparent;")
-        self.RadioButton.setIcon(FIF.MICROPHONE)
-        self.RadioInfoBar.stop()
-        self.TextInputEdit.setPlainText("示例指令...")
+    # 命令发送信号：当用户点击"确认发送"按钮时发出
+    # 信号携带标准化的命令数据字典
+    command_sent = pyqtSignal(dict)
 
-        # 清空所有下拉框，等待中介服务提供数据
-        self.TaskTemplateComboBox.clear()
-        self.UpdateTaskIdComboBox.clear()
-        self.UpdateTaskCommandComboBox.clear()
-        
-        # 连接按钮信号（在内部处理）
-        self._connect_buttons()
-        
-        # 连接模板选择改变信号：当选择模板时自动填入instruction
-        self.TaskTemplateComboBox.currentTextChanged.connect(self._on_template_selection_changed)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._init_ui()
 
-    def get_new_task_instruction(self) -> str:
-        return self.TextInputEdit.toPlainText()
+    def _init_ui(self):
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-    def clear_new_task_instruction(self):
-        self.TextInputEdit.clear()
+        # Header：复用统一的 PanelHeader 风格
+        header = PanelHeader(
+            "命令输入",
+            bg_color=Theme.PANEL_COMMAND_HEADER_BG,
+            border_color=Theme.PANEL_COMMAND_HEADER_BORDER,
+            left_bar_color=Theme.PANEL_COMMAND_HEADER_BORDER,
+            text_color=Theme.PANEL_COMMAND_HEADER_BORDER,
+        )
+        root_layout.addWidget(header)
 
-    def set_task_id_selection_options(self, task_ids: List[str]):
-        """设置任务ID选择下拉框的选项，保留当前选中值"""
-        # 保存当前选中的值
-        current_selection = self.UpdateTaskIdComboBox.currentText()
-        
-        self.UpdateTaskIdComboBox.clear()
-        if task_ids:
-            self.UpdateTaskIdComboBox.addItems(task_ids)
-            # 如果之前选中的值还在新列表中，恢复选中
-            if current_selection and current_selection in task_ids:
-                self.UpdateTaskIdComboBox.setCurrentText(current_selection)
+        # 内容区域背景
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {Theme.PANEL_COMMAND_BG};")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(
+            Theme.SPACING_MEDIUM,
+            Theme.SPACING_MEDIUM,
+            Theme.SPACING_MEDIUM,
+            Theme.SPACING_MEDIUM,
+        )
+        content_layout.setSpacing(Theme.SPACING_MEDIUM)
 
-    def set_command_selection_options(self, commands: List[str]):
-        """设置命令选择下拉框的选项，保留当前选中值"""
-        # 保存当前选中的值
-        current_selection = self.UpdateTaskCommandComboBox.currentText()
-        
-        self.UpdateTaskCommandComboBox.clear()
-        if commands:
-            self.UpdateTaskCommandComboBox.addItems(commands)
-            # 如果之前选中的值还在新列表中，恢复选中
-            if current_selection and current_selection in commands:
-                self.UpdateTaskCommandComboBox.setCurrentText(current_selection)
-    
-    # 向后兼容的别名
-    def set_update_task_options(self, task_ids: List[str]):
-        """向后兼容：使用旧方法名"""
-        self.set_task_id_selection_options(task_ids)
+        # 第一行：指令输入文本（标签 + 一整行输入框）
+        self.input_label = BodyLabel("输入指令文本：")
+        self.text_edit = PlainTextEdit()
+        # 使用较小的最小高度 + 伸缩因子，而不是固定最大高度，
+        # 这样在面板变矮时不会把下面一行完全挤没
+        self.text_edit.setMinimumHeight(80)
 
-    def set_update_command_options(self, commands: List[str]):
-        """向后兼容：使用旧方法名"""
-        self.set_command_selection_options(commands)
-    
-    def get_update_task_info(self) -> tuple:
-        """向后兼容：使用旧方法名"""
-        return self.get_selected_task_update_info()
+        # 第一行加入内容布局
+        content_layout.addWidget(self.input_label)
+        content_layout.addWidget(self.text_edit, 1)
 
-    def set_task_template_options(self, templates: List[str]):
-        """设置任务模板选项（由中介服务提供），保留当前选中值"""
-        # 设置刷新标志，避免触发自动填入
-        self._is_refreshing_options = True
+        # 第二行：两个模板和下拉框（横向排布）
+        templates_row = QHBoxLayout()
+        templates_row.setSpacing(Theme.SPACING_LARGE)
+
+        self.publish_template_label = BodyLabel("发布指令模板：")
+        self.publish_template_combo = ComboBox()
+        # 给予更宽的宽度区间，减少长文案被截断的情况
+        self.publish_template_combo.setMinimumWidth(160)
+        self.publish_template_combo.setMaximumWidth(300)
+
+        self.modify_template_label = BodyLabel("修改指令模板：")
+        self.modify_template_combo = ComboBox()
+        self.modify_template_combo.setMinimumWidth(160)
+        self.modify_template_combo.setMaximumWidth(300)
+
+        templates_row.addWidget(self.publish_template_label)
+        templates_row.addWidget(self.publish_template_combo)
+        templates_row.addSpacing(Theme.SPACING_MEDIUM)
+        templates_row.addWidget(self.modify_template_label)
+        templates_row.addWidget(self.modify_template_combo)
+        templates_row.addStretch(1)
+
+        content_layout.addLayout(templates_row)
+
+        # 第三行：单独的“发送指令”按钮（与主窗口的开始/暂停仿真按钮风格统一）
+        self.send_button = QPushButton("确认发送")
+        self.send_button.setObjectName("PrimaryActionButton")
+        # 适度的最小尺寸，具体外观由全局样式控制
+        self.send_button.setMinimumHeight(32)
+        self.send_button.setMinimumWidth(120)
+        # 尽管理论上全局样式中的 QPushButton#PrimaryActionButton 已经兜底，
+        # 但在某些情况下（例如 qfluentwidgets 或系统主题在运行时再次覆盖按钮样式），
+        # 仍可能导致文字颜色被改成和背景接近。
+        # 这里在这个关键按钮上再做一层局部覆盖，确保文字和边框始终可见。
+        self.send_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {Theme.PRIMARY};
+                color: white;
+                border: 1px solid {Theme.PANEL_COMMAND_HEADER_BORDER};
+                border-radius: {Theme.BORDER_RADIUS_SMALL}px;
+                padding: 6px 20px;
+                font-weight: 600;
+                font-size: 10pt;
+            }}
+
+            QPushButton:hover {{
+                background-color: {Theme.PRIMARY_HOVER};
+            }}
+
+            QPushButton:disabled {{
+                background-color: {Theme.BORDER_LIGHT};
+                color: {Theme.TEXT_DISABLED};
+                border: 1px solid {Theme.BORDER};
+            }}
+            """
+        )
+
+        button_row = QHBoxLayout()
+        # 把按钮放在右侧，更符合操作习惯
+        button_row.addStretch(1)
+        button_row.addWidget(self.send_button)
+
+        content_layout.addLayout(button_row)
+
+        root_layout.addWidget(content)
         
-        # 保存当前选中的值
-        current_selection = self.TaskTemplateComboBox.currentText()
+        # 连接发送按钮的点击事件
+        self.send_button.clicked.connect(self._on_send_button_clicked)
         
-        self.TaskTemplateComboBox.clear()
-        if templates:  # 如果有模板，添加模板
-            self.TaskTemplateComboBox.addItems(templates)
-            # 如果之前选中的值还在新列表中，恢复选中
-            if current_selection and current_selection in templates:
-                self.TaskTemplateComboBox.setCurrentText(current_selection)
-        else:  # 如果没有模板，显示提示
-            self.TaskTemplateComboBox.addItem("暂无模板")
+        # 连接模板选择事件：当选择模板时自动填充指令文本
+        self.publish_template_combo.currentTextChanged.connect(self._on_publish_template_selected)
+        self.modify_template_combo.currentTextChanged.connect(self._on_modify_template_selected)
+
+    def _on_send_button_clicked(self):
+        """处理发送按钮点击事件"""
+        instruction_text = self.get_instruction_text().strip()
         
-        # 重置刷新标志
-        self._is_refreshing_options = False
-    
-    def get_selected_task_update_info(self) -> tuple:
-        """
-        获取选中的任务更新信息
-        返回：(task_id, command) 元组，如果未选择则返回 (None, None)
-        """
-        task_id = self.UpdateTaskIdComboBox.currentText()
-        command = self.UpdateTaskCommandComboBox.currentText()
-        
-        # 检查是否有效选择（排除空字符串和"暂无模板"等占位符）
-        if not task_id or task_id == "暂无选项":
-            task_id = None
-        if not command or command == "暂无选项":
-            command = None
-            
-        return (task_id, command)
-    
-    def get_task_template(self) -> str:
-        """
-        获取选择的任务模板
-        返回：模板名称，如果未选择则返回 None
-        """
-        template = self.TaskTemplateComboBox.currentText()
-        if not template or template == "暂无模板":
-            return None
-        return template
-    
-    def _connect_buttons(self):
-        """连接按钮信号到处理方法"""
-        # 新增任务按钮
-        self.SendTaskPushButton.clicked.connect(self._on_create_task_clicked)
-        
-        # 修改任务按钮
-        self.UpdateTaskPushButton.clicked.connect(self._on_update_task_clicked)
-        
-        # 任务重规划按钮
-        self.ActiveReplanPushButton.clicked.connect(self._on_replan_clicked)
-        
-        # 开始仿真按钮
-        self.StartPushButton.clicked.connect(self._on_start_simulation_clicked)
-    
-    def _on_template_selection_changed(self, template_name: str):
-        """处理模板选择改变事件：自动填入instruction"""
-        # 如果正在刷新选项，不执行自动填入（避免覆盖用户输入）
-        if self._is_refreshing_options:
+        # 如果没有输入指令文本，不发送命令
+        if not instruction_text:
             return
         
-        # 如果选择了有效模板（不是"暂无模板"或空字符串）
-        if template_name and template_name != "暂无模板":
-            # 从mediator获取模板的详细内容
-            template_content = self._mediator.get_task_template_content(template_name)
-            # 填入instruction输入框
-            self.TextInputEdit.setPlainText(template_content)
-    
-    def _on_create_task_clicked(self):
-        """处理'新增任务'按钮点击"""
-        instruction = self.get_new_task_instruction()
-        if instruction and instruction.strip():
-            template = self.get_task_template()
-            command_data = {
-                "type": "create_task",
-                "instruction": instruction.strip(),
-                "template": template,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "source": "gui"
-            }
-            success = self._mediator.receive_command(command_data)
-            if success:
-                self.clear_new_task_instruction()
-                # 发出信号通知需要刷新数据
-                self.command_executed.emit()
-        else:
-            print("请输入任务指令")
-    
-    def _on_update_task_clicked(self):
-        """处理'修改任务'按钮点击"""
-        task_id, command = self.get_selected_task_update_info()
-        if task_id and command:
-            command_data = {
-                "type": "update_task",
-                "task_id": task_id,
-                "command": command,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "source": "gui"
-            }
-            success = self._mediator.receive_command(command_data)
-            if success:
-                # 发出信号通知需要刷新数据
-                self.command_executed.emit()
-        else:
-            print("请选择任务ID和命令选项")
-    
-    def _on_replan_clicked(self):
-        """处理'任务重规划'按钮点击"""
+        # 确定命令类型：如果有选择修改模板，则可能是修改任务；否则默认为创建任务
+        # 这里简化处理，统一使用 create_task，具体类型由后端根据指令内容判断
+        command_type = "create_task"
+        
+        # 获取选中的模板（优先使用发布指令模板）
+        selected_template = None
+        if self.publish_template_combo.currentText():
+            selected_template = self.publish_template_combo.currentText()
+        elif self.modify_template_combo.currentText():
+            selected_template = self.modify_template_combo.currentText()
+        
+        # 构建标准化的命令数据
         command_data = {
-            "type": "replan",
-            "timestamp": datetime.datetime.now().isoformat(),
+            "type": command_type,
+            "instruction": instruction_text,
+            "template": selected_template if selected_template else None,
+            "timestamp": datetime.now().isoformat(),
             "source": "gui"
         }
-        success = self._mediator.receive_command(command_data)
-        if success:
-            # 发出信号通知需要刷新数据
-            self.command_executed.emit()
+        
+        # 发送命令信号
+        self.command_sent.emit(command_data)
+        
+        # 发送成功后清空输入框（可选）
+        # self.clear_instruction_text()
     
-    def _on_start_simulation_clicked(self):
-        """处理'开始仿真'按钮点击"""
-        command_data = {
-            "type": "start_simulation",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "source": "gui"
-        }
-        success = self._mediator.receive_command(command_data)
-        if success:
-            # 发出信号通知需要刷新数据
-            self.command_executed.emit()
+    def _on_publish_template_selected(self, template_name: str):
+        """处理发布指令模板选择事件"""
+        if template_name:
+            # 这里可以自动填充模板内容，但需要从mediator获取模板内容
+            # 暂时只记录选择，不自动填充
+            pass
+    
+    def _on_modify_template_selected(self, template_name: str):
+        """处理修改指令模板选择事件"""
+        if template_name:
+            # 这里可以自动填充模板内容，但需要从mediator获取模板内容
+            # 暂时只记录选择，不自动填充
+            pass
+
+    # --- 对外简单接口（方便以后接入中介服务） ---
+    def get_instruction_text(self) -> str:
+        """获取当前输入的指令文本"""
+        return self.text_edit.toPlainText()
+
+    def set_instruction_text(self, text: str):
+        self.text_edit.setPlainText(text or "")
+
+    def clear_instruction_text(self):
+        self.text_edit.clear()
+
+    def set_publish_templates(self, templates):
+        """设置“发布任务指令模板”下拉选项"""
+        self.publish_template_combo.clear()
+        if templates:
+            self.publish_template_combo.addItems(list(templates))
+
+    def set_modify_templates(self, templates):
+        """设置“修改指令模板”下拉选项"""
+        self.modify_template_combo.clear()
+        if templates:
+            self.modify_template_combo.addItems(list(templates))
+
+

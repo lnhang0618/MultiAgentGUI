@@ -7,9 +7,17 @@
 2. CommandHandler（命令处理器）：负责处理UI的命令（UI→后端）
 
 MediatorService同时实现这两个接口，作为统一的中介服务。
+
+此外，还支持可选的绘制器接口（CanvasRenderer）：
+- Mediator 可以实现绘制器接口，封装后端特定的绘制逻辑
+- Controller 获取绘制器并调用，但不知道具体绘制细节
+- 这样既保持了职责分离，又允许后端特定的绘制逻辑
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Any as TypingAny, Optional, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from MultiAgentGUI.services.canvas_renderer import CanvasRenderer
 
 
 class DataProvider(ABC):
@@ -227,6 +235,19 @@ class DataProvider(ABC):
         返回：命令选项字符串列表
         """
         pass
+
+    def get_available_planners(self) -> List[Dict[str, str]]:
+        """
+        获取可供 GUI 启动的 planner 列表
+        返回：[{key,label,description}, ...]
+        """
+        return []
+
+    def get_simulation_status(self) -> str:
+        """
+        获取当前仿真状态：idle/running/paused/stopped/unknown
+        """
+        return "unknown"
     
     def is_simulation_running(self) -> bool:
         """
@@ -327,15 +348,210 @@ class CommandHandler(ABC):
 
 class MediatorService(DataProvider, CommandHandler):
     """
-    中介服务接口
+    中介服务接口（后端适配层）
     
-    同时实现DataProvider和CommandHandler接口，作为统一的中介服务。
+    同时实现 DataProvider 和 CommandHandler 接口，作为统一的中介服务。
     后端适配器应该继承此类并实现所有抽象方法。
+    
+    核心职责：
+    1. 数据提供（DataProvider）：从后端获取数据并转换为标准格式（后端→UI）
+    2. 命令处理（CommandHandler）：接收标准格式命令并转换为后端格式（UI→后端）
+    3. 后端适配：适配不同后端的数据格式和通信协议
+    
+    职责边界（重要）：
+    ┌─────────────────────────────────────────────────────────┐
+    │ Mediator (后端适配层)                                     │
+    │ ✅ 提供什么数据：从后端获取并转换为标准格式              │
+    │ ✅ 处理什么命令：将标准格式命令转换为后端格式            │
+    │ ✅ 后端交互：实际的后端通信和数据格式转换                │
+    │ ❌ 不负责：UI 生命周期、UI 操作、定时器管理               │
+    └─────────────────────────────────────────────────────────┘
     
     设计理念：
     - DataProvider：负责数据获取（后端→UI），数据流单向
     - CommandHandler：负责命令处理（UI→后端），数据流单向
     - 两个接口完全隔离，互不干扰，便于维护和扩展
+    
+    可选功能：
+    - 与前端画布的轻量交互（数据绘制层）
+    - UI 操作回调机制（反向通信，用于反馈操作结果）
     """
-    pass
+    
+    def __init__(self):
+        """初始化MediatorService"""
+        # UI操作回调函数字典（可选）
+        # Controller 通过 set_ui_callbacks() 注册回调
+        self._ui_callbacks: Optional[Dict[str, Callable]] = None
+
+    # ---------- 可选：绘制器接口（Canvas Renderer） ----------
+    def get_canvas_renderer(self) -> Optional['CanvasRenderer']:
+        """
+        获取画布绘制器（Canvas Renderer）
+        
+        职责说明：
+        - Mediator 实现绘制器接口，封装后端特定的绘制逻辑
+        - Controller 获取绘制器并调用，但不知道具体绘制细节
+        - 不同后端可以实现完全不同的绘制逻辑
+        
+        返回：
+            CanvasRenderer 实例，如果 Mediator 不支持绘制则返回 None
+        
+        设计理念：
+        - Mediator 不直接操作 UI，而是提供绘制策略
+        - Controller 负责协调绘制，但不知道具体绘制细节
+        - 这样既保持了职责分离，又允许后端特定的绘制逻辑
+        
+        默认实现返回 None，具体中介服务可以覆盖此方法返回自定义的绘制器。
+        """
+        return None
+
+    def handle_design_scene_event(self, event: Dict[str, TypingAny]) -> None:
+        """
+        处理来自场景视图的交互 / 编辑事件（事件处理层：UI→后端）。
+        
+        职责说明：
+        - 此方法属于命令处理的一部分，负责将UI事件转换为后端操作
+        - Controller 负责将UI信号转发到此方法
+        - Mediator 负责根据事件修改后端数据并刷新显示
+        
+        event 的结构由前端约定，通常至少包含：
+        - "source": "design" | "view"        # 来自场景设计面板或仿真结果面板
+        - "type": "mouse_press" | "mouse_double_click" | "wheel" 等
+        - "scene_pos": (x, y)                # 以场景坐标表示的点击/滚轮位置
+        - 其他字段：如 "button"、"hit_count"、"delta"、"modifiers" 等
+
+        默认实现不做任何事，具体中介服务可以覆盖此方法，根据事件修改后端场景数据，
+        然后通过重新绘制的方式反馈到前端。
+        """
+        return
+    
+    def import_background_file(self, file_path: str) -> None:
+        """
+        导入背景图文件（数据处理层）。
+        
+        注意：此方法只负责数据处理，不包含UI操作（如文件对话框）。
+        UI操作（文件选择）应由Controller负责。
+        
+        参数：
+            file_path: 背景图文件路径
+        
+        默认实现不做任何事，具体中介服务可以覆盖此方法，例如：
+        - 加载图片文件
+        - 更新后端场景数据
+        - 刷新画布显示
+        """
+        return
+    
+    def import_vector_file(self, file_path: str) -> None:
+        """
+        导入矢量图文件（数据处理层）。
+        
+        注意：此方法只负责数据处理，不包含UI操作（如文件对话框）。
+        UI操作（文件选择）应由Controller负责。
+        
+        参数：
+            file_path: 矢量图文件路径（SVG、DXF等）
+        
+        默认实现不做任何事，具体中介服务可以覆盖此方法，例如：
+        - 加载矢量图文件
+        - 更新后端场景数据
+        - 在场景中添加矢量元素
+        - 刷新画布显示
+        """
+        return
+    
+    def handle_planner_selection(self, faction: str, planner_name: str) -> None:
+        """
+        处理规划器选择变化（命令处理层：UI→后端）。
+        
+        职责说明：
+        - 此方法属于命令处理的一部分，负责将UI选择转换为后端配置更新
+        - Controller 负责将UI信号转发到此方法
+        - Mediator 负责更新后端规划器配置
+
+        参数:
+            faction: "red" 或 "blue"，表示红方或蓝方
+            planner_name: 选择的规划器名称
+        
+        默认实现不做任何事，具体中介服务可以覆盖此方法，例如：
+        - 更新后端规划器配置
+        - 重新加载规划器
+        """
+        return
+    
+    def get_planner_options(self) -> tuple:
+        """
+        获取可用的规划器选项。
+        
+        返回:
+            (red_planners, blue_planners) 元组，每个都是字符串列表
+            例如: (["规划器A", "规划器B"], ["规划器C", "规划器D"])
+        
+        默认实现返回空列表，具体中介服务可以覆盖此方法。
+        """
+        return ([], [])
+    
+    # ---------- 可选：UI操作回调机制 ----------
+    def set_ui_callbacks(self, callbacks: Dict[str, Callable]) -> None:
+        """
+        设置UI操作回调函数（可选方法）。
+        
+        参数：
+            callbacks: 回调函数字典，键为操作名称，值为回调函数
+            例如：
+            {
+                'show_notification': callable(message, notification_type, duration),
+                # 未来可以扩展其他操作：
+                # 'show_dialog': callable(title, message, buttons),
+                # 'update_status_bar': callable(message),
+            }
+        
+        注意：
+        - 此方法为可选，如果Mediator不需要UI操作回调，可以不实现
+        - Controller 负责在 setup_bindings() 中调用此方法注册回调
+        - Mediator 可以在处理命令时调用这些回调来触发UI操作
+        - 回调函数的参数格式由Controller定义，Mediator需要按照格式调用
+        
+        使用示例：
+        ```python
+        # 在 Mediator 中调用UI回调
+        self._call_ui_callback(
+            'show_notification',
+            message="命令执行成功，但需要注意资源限制",
+            notification_type="warning",
+            duration=5000
+        )
+        ```
+        """
+        self._ui_callbacks = callbacks
+    
+    def _call_ui_callback(self, callback_name: str, *args, **kwargs) -> Any:
+        """
+        调用UI操作回调（内部辅助方法）。
+        
+        参数：
+            callback_name: 回调函数名称（如 'show_notification'）
+            *args, **kwargs: 传递给回调函数的参数
+        
+        返回：回调函数的返回值，如果回调不存在则返回None
+        
+        注意：
+        - 此方法用于Mediator内部调用UI回调
+        - 调用前会检查回调是否存在，避免错误
+        - 如果回调调用失败，会打印错误日志但不会抛出异常
+        """
+        if self._ui_callbacks and callback_name in self._ui_callbacks:
+            try:
+                callback = self._ui_callbacks[callback_name]
+                return callback(*args, **kwargs)
+            except Exception as e:
+                print(f"[MediatorService] 调用UI回调 '{callback_name}' 失败: {e}")
+        elif self._ui_callbacks is None:
+            # 回调未注册，这是正常的（可选功能）
+            pass
+        else:
+            # 回调已注册但指定的回调不存在
+            print(f"[MediatorService] UI回调 '{callback_name}' 不存在")
+        return None
+
 

@@ -1,7 +1,7 @@
 # ui/widgets/gantt_chart.py
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from .matplotlib_font_config import setup_chinese_font
+from MultiAgentGUI.themes.matplotlib_font_config import setup_chinese_font
 
 
 class GenericGanttChart(FigureCanvas):

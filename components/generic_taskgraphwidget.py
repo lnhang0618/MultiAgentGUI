@@ -10,7 +10,7 @@ import hashlib
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from typing import Dict, Any, Optional
-from .matplotlib_font_config import setup_chinese_font
+from MultiAgentGUI.themes.matplotlib_font_config import setup_chinese_font
 
 
 class GenericTaskGraphWidget(FigureCanvas):
